@@ -120,7 +120,7 @@ fn main() {
     let mut node_elevation = BTreeMap::new();
     let mut result: Vec<WayInfo> = Vec::new();
 
-    // Iterate over all the nodes and get their elevations
+    // Iterate over all the dependant nodes and get their elevations
     objs.iter()
         .filter(|(id, obj)| {
             if let osmpbfreader::OsmObj::Node(node) = obj {
@@ -136,7 +136,7 @@ fn main() {
             node_elevation.insert(id.inner_id(), elevation.data[0]);
         });
 
-    // Iterate over all the ways
+    // Iterate over all the ways and compute slope information
     objs.iter()
         .filter(|(id, obj)| {
             if let osmpbfreader::OsmObj::Way(way) = obj {
