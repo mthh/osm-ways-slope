@@ -5,7 +5,6 @@ use gdal::raster::{RasterBand, ResampleAlg};
 use gdal::{Dataset, Metadata, GeoTransformEx};
 use std::path::Path;
 
-
 #[derive(Parser, Debug)]
 #[command(author, version, about, long_about = None)]
 struct Args {
@@ -15,9 +14,12 @@ struct Args {
     elevation_file: String,
     // The path to the output file
     output_file: String,
+    // The key or key-value pair to filter the ways by
+    #[arg(short, long)]
+    filter: Option<String>,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 struct WayInfo {
     way_id: i64,
     distance: f64,
@@ -27,9 +29,16 @@ struct WayInfo {
     descent: f64,
 }
 
+#[derive(Debug)]
 struct Location {
     latitude: f64,
     longitude: f64,
+}
+
+#[derive(Debug)]
+enum Filter {
+    Key(String),
+    KeyValue(String, String),
 }
 
 fn haversine_distance(start: Location, end: Location) -> f64 {
@@ -46,8 +55,52 @@ fn haversine_distance(start: Location, end: Location) -> f64 {
     return r * c;
 }
 
+// Macro that takes an array of filter and returns a closure that can be used to filter the ways
+macro_rules! filter {
+    ($filters:expr) => {
+        |obj: &osmpbfreader::OsmObj| {
+            let mut ret_val = false;
+            for filter in $filters {
+                match filter {
+                    Filter::Key(key) => {
+                        if obj.tags().contains_key(key.as_str()) {
+                            ret_val = true;
+                        }
+                    },
+                    Filter::KeyValue(key, value) => {
+                        if obj.tags().get(key.as_str()) == Some(&smartstring::alias::String::from(value.as_str())) {
+                            ret_val = true;
+                        }
+                    },
+                }
+            }
+            ret_val
+        }
+    };
+}
+
 fn main() {
     let args = Args::parse();
+
+    // Read optional arguments if any in order to build an array of filters
+    let filters = match args.filter {
+        Some(filter) => {
+            let mut split = filter.split(',');
+            let mut result = Vec::new();
+            for k_or_kv in split {
+                let mut split = k_or_kv.split('=');
+                let key = split.next().unwrap();
+                let value = split.next();
+                let ret_val = match value {
+                    Some(value) => Filter::KeyValue(key.to_string(), value.to_string()),
+                    None => Filter::Key(key.to_string()),
+                };
+                result.push(ret_val);
+            }
+            result
+        },
+        None => vec![Filter::Key("highway".to_string())],
+    };
 
     // Open OSM file
     let r = std::fs::File::open(&Path::new(&args.osm_file)).expect(format!("Unable to open OSM file {}", &args.osm_file).as_str());
@@ -61,7 +114,7 @@ fn main() {
 
     // Get all the highways and their dependencies
     let objs = pbf.get_objs_and_deps(|obj| {
-        obj.is_way() && obj.tags().contains_key("highway")
+        obj.is_way() && filter!(&filters)(obj)
     }).unwrap();
 
     let mut node_elevation = BTreeMap::new();
