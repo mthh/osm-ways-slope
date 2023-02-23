@@ -168,7 +168,7 @@ fn main() {
                         latitude: node_b.lat(),
                         longitude: node_b.lon(),
                     };
-                    distance += haversine_distance(start, end) / 1000.;
+                    distance += haversine_distance(start, end) * 1000.;
 
                     if node_elevation.get(&id_a).unwrap() < node_elevation.get(&id_b).unwrap() {
                         climb_distance += distance;
